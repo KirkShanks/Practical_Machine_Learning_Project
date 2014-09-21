@@ -1,0 +1,147 @@
+---
+title: "Weight Lifting Exercise Predictions"
+synopsis: ""
+author: "Kirk Shanks"
+date: "Sunday, September 21, 2014"
+output: html_document
+---
+
+### Synopsis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: (http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset). 
+
+
+#### Loading and preprocessing the data
+
+The data set is the [Weight Lifting Dataset](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) [11.6 Mb].
+
+
+#### Read in the data
+
+Read in the data and preprocess:
+
+```{r, echo=TRUE, eval=FALSE, warning=FALSE}
+fileURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+destfile <- "data/pml-training.csv"
+
+download.file(fileURL, destfile)
+
+pml.training <- read.csv("data/pml-training.csv")
+```
+
+Next, we need to divide the data into training and test sets. 
+
+```{r, echo=TRUE, warning=FALSE}
+library(ggplot2)
+library(knitr)
+library(caret)
+
+inTrain <- createDataPartition(y = pml.training$classe, p = 0.7, list = FALSE)
+training <- pml.training[inTrain,]
+testing <- pml.training[-inTrain,]
+
+```
+
+I then removed all columns that had a zero or near zero variance, the columns with NAs as well as the participants names and the time stamps.
+
+```{r, echo=TRUE, warning=FALSE}
+# Remove columns with Near Zero Variance
+nzv <- nearZeroVar(training[,-160], freqCut = 95/5, uniqueCut = 10, saveMetrics = FALSE)
+training <- training[,-nzv]
+
+
+# Remove the columns with NAs
+# I am also removing the timestamps and user names columns
+training <- subset(training, select=colMeans(is.na(training)) == 0) 
+training <- training[,-(1:6)]
+```
+
+
+This results in a training set with a size of:
+```{r, echo=TRUE, warning=FALSE}
+dim(training)
+```
+
+### Model Fit
+
+For the model fit algorithms, I chose to use two methods; random forests and boosting.
+
+#### Random Forest
+
+I used 250 trees to limit computation time.
+
+```{r, echo=TRUE, warning=FALSE}
+# Model Fit
+    # Random Forest
+        library(randomForest)
+
+        set.seed(7777777)
+        modFit.rf <- randomForest(classe ~., 
+                                  ntree = 250, 
+                                  data = training)
+        
+        # Predicting new values
+        pred.rf <- predict(modFit.rf, testing)
+        testing$predRight.rf <- pred.rf == testing$classe
+        
+```
+
+
+#### Boosting
+```{r, echo=TRUE, warning=FALSE}
+    # Boosting
+        
+        library(ISLR)
+        
+        set.seed(7777777)
+        modFit.gbm <- train(classe ~., 
+                            method = "gbm", 
+                            data = training, 
+                            verbose=FALSE)
+
+        # Predicting new values
+        pred.gbm <- predict(modFit.gbm, testing)
+        testing$predRight.gbm <- pred.gbm == testing$classe
+```
+
+
+### Results
+
+The *random forest model* resulted in *`r sum(testing$predRight.rf)/nrow(testing)`* accuracy while the *boosting* resulted in *`r sum(testing$predRight.gbm)/nrow(testing)`* accuracy. 
+
+The *random forest model* has an OOB estimate of error rate of 0.57%.
+
+The *random forest model* plot shows very little error, whereas the *boosting* plot shows a little more scattered results, while still showing a fairly high prediction rate.
+
+
+#### Random Forests
+```{r, echo=TRUE, warning=FALSE}
+table(pred.rf, testing$classe)
+
+modFit.rf
+```
+
+#### Boosting
+```{r, echo=TRUE, warning=FALSE}
+table(pred.gbm, testing$classe)
+
+modFit.gbm
+```
+
+### Plots
+#### Random Forests
+```{r, echo=TRUE, warning=FALSE}
+        # Plot the results
+        p <- ggplot(testing, aes(pred.rf, classe))
+        p + stat_sum(aes(size = ..n.., col = ..n..)) +
+                ggtitle("Random Forest Results")
+```
+
+
+#### Boosting
+```{r, echo=TRUE, warning=FALSE}
+        # Plot the results
+        p <- ggplot(testing, aes(pred.gbm, classe))
+        p + stat_sum(aes(size = ..n.., col = ..n..)) +
+                ggtitle("Boosting Results")
+```
